@@ -1,0 +1,41 @@
+package config
+
+import (
+	"log"
+	"os"
+)
+
+type Config struct {
+	Grpc struct {
+		Host string
+		Port string
+	}
+
+	Kafka struct {
+		Broker string
+		Topic  string
+	}
+}
+
+func Load() *Config {
+	cfg := &Config{}
+
+	cfg.Grpc.Host = getEnv("GRPC_HOST", "localhost")
+	cfg.Grpc.Port = getEnv("GRPC_PORT", "8080")
+
+	cfg.Kafka.Broker = getEnv("KAFKA_BROKER", "localhost:9092")
+	cfg.Kafka.Topic = getEnv("KAFKA_TOPIC", "calculations")
+
+	return cfg
+}
+
+func getEnv(key, fallback string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		if fallback == "" {
+			log.Fatalf("env %s is required", key)
+		}
+		return fallback
+	}
+	return val
+}

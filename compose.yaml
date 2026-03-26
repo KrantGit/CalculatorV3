@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  calculator:
+    build: ./calculator-service
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - GRPC_STORAGE_ADDR=storage:50051
+      - KAFKA_BROKER=kafka:9092
+      - KAFKA_TOPIC=calculations
+    depends_on:
+      - storage
+      - kafka
+
+  storage:
+    build: ./storage-service
+    environment:
+      - PORT=50051
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dbpass
+      POSTGRES_DB: calculator
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
