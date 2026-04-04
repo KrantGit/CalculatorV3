@@ -1,20 +1,18 @@
 package kafka
 
 import (
+	"calculator-service/internal/entity"
 	"context"
 	"encoding/json"
-	"fmt"
-	"log"
 	"time"
 
-	"calculator-service/internal/config"
 	"github.com/segmentio/kafka-go"
 )
 
 type Event struct {
-	Expression string    `json:"expression"`
-	Result     float64   `json:"result"`
-	Timestamp  time.Time `json:"timestamp"`
+	Expression entity.Input  `json:"expression"`
+	Result     entity.Output `json:"result"`
+	Timestamp  time.Time     `json:"timestamp"`
 }
 
 type Producer struct {
@@ -31,7 +29,8 @@ func New(broker, topic string) *Producer {
 	}
 }
 
-func (p *Producer) Publish(expr string, result float64) {
+func (p *Producer) Publish(expr entity.Input, result entity.Output) error {
+
 	event := Event{
 		Expression: expr,
 		Result:     result,
@@ -44,9 +43,7 @@ func (p *Producer) Publish(expr string, result float64) {
 		kafka.Message{Value: data},
 	)
 
-	if err != nil {
-		log.Println("kafka error:", err)
-	}
+	return err
 }
 
 func (p *Producer) Close() error {

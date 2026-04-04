@@ -2,17 +2,15 @@ package service
 
 import (
 	"calculator-service/internal/entity"
-	"calculator-service/internal/grpcclient"
 	"calculator-service/internal/repository/kafka"
 )
 
 type Service struct {
-	grpc  *grpcclient.Client
 	kafka *kafka.Producer
 }
 
-func New(grpc *grpcclient.Client, kafka *kafka.Producer) *Service {
-	return &Service{grpc, kafka}
+func New(kafka *kafka.Producer) *Service {
+	return &Service{kafka}
 }
 
 func (s *Service) CalculatorService(input entity.Input) entity.Output {
@@ -35,6 +33,8 @@ func (s *Service) CalculatorService(input entity.Input) entity.Output {
 	default:
 		result.Error = "Unknown sign: " + input.Sign
 	}
+
+	s.kafka.Publish(input, result)
 
 	return result
 }
