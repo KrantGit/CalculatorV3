@@ -7,7 +7,6 @@ import (
 	"google.golang.org/grpc"
 
 	"storage/internal/config"
-	"storage/internal/grpcserver"
 )
 
 func main() {
@@ -17,9 +16,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	s := grpc.NewServer()
-	grpcserver.Register(s)
 
 	log.Println("Storage running on :" + cfg.Port)
 	s.Serve(lis)

@@ -12,7 +12,6 @@ import (
 func main() {
 	cfg := config.Load()
 
-	grpcClient := grpcclient.New(&cfg.Grpc)
 	producer := kafka.New(cfg.Kafka.Broker, cfg.Kafka.Topic)
 
 	calculatorService := service.New()
