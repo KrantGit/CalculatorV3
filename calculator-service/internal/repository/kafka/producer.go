@@ -1,26 +1,21 @@
 package kafka
 
 import (
-	"calculator-service/internal/entity"
 	"context"
-	"encoding/json"
-	"time"
-
 	"github.com/segmentio/kafka-go"
 )
 
-type Event struct {
-	Expression entity.Input  `json:"expression"`
-	Result     entity.Output `json:"result"`
-	Timestamp  time.Time     `json:"timestamp"`
+type Producer interface {
+	Send(ctx context.Context, msg []byte) error
+	Close() error
 }
 
-type Producer struct {
+type KafkaProducer struct {
 	writer *kafka.Writer
 }
 
-func New(broker, topic string) *Producer {
-	return &Producer{
+func NewKafkaProducer(broker, topic string) Producer {
+	return &KafkaProducer{
 		writer: &kafka.Writer{
 			Addr:     kafka.TCP(broker),
 			Topic:    topic,
@@ -29,23 +24,10 @@ func New(broker, topic string) *Producer {
 	}
 }
 
-func (p *Producer) Publish(expr entity.Input, result entity.Output) error {
-
-	event := Event{
-		Expression: expr,
-		Result:     result,
-		Timestamp:  time.Now(),
-	}
-
-	data, _ := json.Marshal(event)
-
-	err := p.writer.WriteMessages(context.Background(),
-		kafka.Message{Value: data},
-	)
-
-	return err
+func (p *KafkaProducer) Send(ctx context.Context, msg []byte) error {
+	return p.writer.WriteMessages(ctx, kafka.Message{Value: msg})
 }
 
-func (p *Producer) Close() error {
+func (p *KafkaProducer) Close() error {
 	return p.writer.Close()
 }

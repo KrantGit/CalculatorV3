@@ -3,67 +3,52 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	_ "github.com/lib/pq"
+
 	"storage-service/internal/config"
-	"storage-service/internal/entity"
-
-	"github.com/segmentio/kafka-go"
+	"storage-service/internal/migrator"
+	"storage-service/internal/repository/kafka"
 )
-
-type Msg struct {
-	Expression entity.Input  `json:"expression"`
-	Result     entity.Output `json:"result"`
-}
 
 func main() {
 	cfg := config.Load()
 
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host,
-		cfg.Port,
-		cfg.User,
-		cfg.Pass,
-		cfg.Dbname,
-	)
+	log.Println("Applying database migrations")
+	if err := migrator.RunMigrations(cfg.MigrateURL(), cfg.Migrations.Path); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
 
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("postgres", cfg.DSN())
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to open DB: %v", err)
 	}
 	defer db.Close()
 
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to ping DB: %v", err)
 	}
-	log.Println("Connected to DB")
+	log.Println("Connected to PostgreSQL")
 
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{"kafka:9092"},
-		Topic:   "calculations",
-	})
-	defer reader.Close()
+	consumer := kafka.NewConsumer(cfg.Kafka.Broker, cfg.Kafka.Topic, db)
+	defer consumer.Close()
 
-	for {
-		msg, err := reader.ReadMessage(context.Background())
-		if err != nil {
-			log.Printf("Read error: %v", err)
-			continue
-		}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-		var calc Msg
-		if err := json.Unmarshal(msg.Value, &calc); err != nil {
-			log.Printf("JSON error: %v", err)
-			continue
-		}
+	go consumer.Start(ctx)
 
-		_, err = db.Exec("INSERT INTO calculations (expression, result) VALUES ($1, $2)",
-			calc.Expression, calc.Result)
-		if err != nil {
-			log.Printf("DB error: %v", err)
-		} else {
-			log.Printf("Saved: %s = %.2f", calc.Expression, calc.Result)
-		}
-	}
+	log.Println("DB Service is running. Press Ctrl C to stop.")
+	<-ctx.Done()
+
+	log.Println("Graceful shutdown complete")
 }

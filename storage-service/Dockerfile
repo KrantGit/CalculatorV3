@@ -1,9 +1,19 @@
 FROM golang:1.25.3
 
 WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
+RUN go build -o worker ./cmd/worker
 
-RUN go mod tidy
-RUN go build -o app ./cmd/app
+FROM alpine:latest
 
-CMD ["./app"]
+WORKDIR /app
+COPY --from=builder /app/worker .
+COPY --from=builder /app/migrations ./migrations
+
+RUN adduser -D appuser && chown -R appuser /app
+USER appuser
+
+CMD ["./worker"]

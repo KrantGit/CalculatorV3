@@ -1,49 +1,58 @@
-package Internal
+package handler
 
 import (
-	"calculator-service/internal/entity"
 	"encoding/json"
-	"io"
+	"errors"
 	"net/http"
+
+	"calculator-service/internal/service"
 )
 
-type Service interface {
-	CalculatorService(input entity.Input) (output entity.Output)
+type CalculatorHandler struct {
+	calcService *service.CalculatorService
 }
 
-type Handler struct {
-	service Service
+func NewCalculatorHandler(calc *service.CalculatorService) *CalculatorHandler {
+	return &CalculatorHandler{calcService: calc}
 }
 
-func New(s Service) *Handler {
-	return &Handler{s}
-}
-
-func (h *Handler) CalculatorHandler(w http.ResponseWriter, req *http.Request) {
-
-	if req.Method != "POST" {
-		http.Error(w, "Not POST method", http.StatusMethodNotAllowed)
+func (h *CalculatorHandler) HandleCalculate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
-	body, err := io.ReadAll(req.Body)
-	if err != io.EOF && err != nil {
-		panic(err)
+	var req struct {
+		A  float64 `json:"a"`
+		B  float64 `json:"b"`
+		Op string  `json:"op"`
 	}
-	defer req.Body.Close()
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
 
-	var input entity.Input
-	err = json.Unmarshal(body, &input)
+	resultMsg, err := h.calcService.Process(r.Context(), req.A, req.B, req.Op)
 	if err != nil {
-		panic(err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrDivisionByZero) || errors.Is(err, service.ErrUnknownOp) {
+			status = http.StatusBadRequest
+		}
+		writeJSONError(w, status, err.Error())
+		return
 	}
-
-	result := h.service.CalculatorService(input)
 
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(result)
-	if err != nil {
-		panic(err)
-	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "success",
+		"message": "Calculation processed and queued",
+		"details": resultMsg,
+	})
+}
 
+func writeJSONError(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }

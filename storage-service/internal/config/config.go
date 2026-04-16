@@ -1,36 +1,70 @@
 package config
 
 import (
-	"log"
+	"fmt"
 	"os"
 )
 
 type Config struct {
-	Host   string
-	Port   string
-	User   string
-	Pass   string
-	Dbname string
+	Kafka      KafkaConfig
+	Database   DatabaseConfig
+	Migrations MigrationsConfig
+}
+
+type KafkaConfig struct {
+	Broker string
+	Topic  string
+}
+
+type DatabaseConfig struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	Name     string
+	SSLMode  string
+}
+
+type MigrationsConfig struct {
+	Path string
+}
+
+func (c *Config) DSN() string {
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		c.Database.Host, c.Database.Port, c.Database.User,
+		c.Database.Password, c.Database.Name, c.Database.SSLMode)
+}
+
+func (c *Config) MigrateURL() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		c.Database.User, c.Database.Password,
+		c.Database.Host, c.Database.Port,
+		c.Database.Name, c.Database.SSLMode)
 }
 
 func Load() *Config {
-	cfg := &Config{
-		getEnv("DB_HOST", "postgres"),
-		getEnv("DB_PORT", "5432"),
-		getEnv("DB_USER", "postgres"),
-		getEnv("DB_PASSWORD", "dbpass"),
-		getEnv("DB_NAME", "calculator"),
+	return &Config{
+		Kafka: KafkaConfig{
+			Broker: getEnv("KAFKA_BROKER", "kafka:29092"),
+			Topic:  getEnv("KAFKA_TOPIC", "calculations"),
+		},
+		Database: DatabaseConfig{
+			Host:     getEnv("DB_HOST", "postgres"),
+			Port:     getEnv("DB_PORT", "5432"),
+			User:     getEnv("DB_USER", "postgres"),
+			Password: getEnv("DB_PASSWORD", "dbpass"),
+			Name:     getEnv("DB_NAME", "calculator"),
+			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		},
+		Migrations: MigrationsConfig{
+			Path: getEnv("MIGRATIONS_PATH", "/app/migrations"),
+		},
 	}
-	return cfg
 }
 
 func getEnv(key, fallback string) string {
-	val := os.Getenv(key)
-	if val == "" {
-		if fallback == "" {
-			log.Fatalf("env %s required", key)
-		}
-		return fallback
+	if val := os.Getenv(key); val != "" {
+		return val
 	}
-	return val
+	return fallback
 }
