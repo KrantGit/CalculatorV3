@@ -12,14 +12,16 @@ import (
 	_ "github.com/lib/pq"
 
 	"storage-service/internal/config"
+	"storage-service/internal/handler"
 	"storage-service/internal/migrator"
-	"storage-service/internal/repository/kafka"
+	"storage-service/internal/repository"
+	"storage-service/internal/service"
 )
 
 func main() {
 	cfg := config.Load()
 
-	log.Println("Applying database migrations")
+	log.Println("🔄 Applying database migrations...")
 	if err := migrator.RunMigrations(cfg.MigrateURL(), cfg.Migrations.Path); err != nil {
 		log.Fatalf("Migration failed: %v", err)
 	}
@@ -35,20 +37,21 @@ func main() {
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping DB: %v", err)
+		log.Fatalf("DB ping failed: %v", err)
 	}
 	log.Println("Connected to PostgreSQL")
 
-	consumer := kafka.NewConsumer(cfg.Kafka.Broker, cfg.Kafka.Topic, db)
-	defer consumer.Close()
+	repo := repository.NewPostgresRepo(db)
+	calcService := service.NewCalculationService(repo)
+	calcHandler := handler.NewCalculationHandler(calcService, cfg.Kafka.Broker, cfg.Kafka.Topic)
+	defer calcHandler.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go consumer.Start(ctx)
-
-	log.Println("DB Service is running. Press Ctrl C to stop.")
-	<-ctx.Done()
-
+	log.Println("Storage Worker is running. Press Ctrl+C to stop.")
+	if err := calcHandler.Start(ctx); err != nil && err != context.Canceled {
+		log.Fatalf("Handler fatal error: %v", err)
+	}
 	log.Println("Graceful shutdown complete")
 }
